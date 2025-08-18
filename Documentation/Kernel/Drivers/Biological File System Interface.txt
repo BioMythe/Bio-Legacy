@@ -1,0 +1,54 @@
+The Biological File System Interface (BFSI) is the standard kernel driver interface that each file system driver must implement for the Biological Operating System (BIO).
+
+A File System driver for the BIO OS operates in two different main parts:
+1. Frontend Kernel Interface (following the Biological File System Interface standard)
+2. Backend File System Driver (the actual implementation specific part of the driver that internally deals with the file system.)
+
+In BIO, at the kernel level the kernel interacts with the file system using purely paths. This is because every file system has different inner working mechanism that cannot
+be accurately represented for all sorts of file systems. BFSI provides a path-centric interface that the kernel uses to interact with the file system driver. It provides very
+generic structures for common file system entries (such as files, directories) and specific values for permissions and flags that the BFSI of the file system must receive
+and convert into a format that the backend part understands.
+
+¿Why are there two layers to the driver?
+Not all file systems are created the same, most use entirely different conventions to organize data. ext4 and POSIX-compliant file systems use inode mechanisms, NTFS
+uses B-trees and the FAT family of file systems use clusters and FATs to organize data. There is a great deal of uniform within these file systems and at the kernel
+level, we cannot have specific features for a file system interface that covers all of these cases. The kernel is defined to operate on highly abstracted layers in order
+to serve its purpose within all configurations. Because each file system is vastly different, to operate on an abstract layer, the kernel defines a standard set of values,
+structures and functions that it uses to deal with file systems *in a generic, common and shared sense*, every file system has paths, every file system has files, every 
+file system has directories, those are all common properties of a File System, no matter how they are implemented in the backend.
+
+The BFSI defines all these common points of file systems in a standard manner and enforces all file system drivers to provide these common functionalities.
+This common abstraction layer is called BFSI. The kernel knows how to talk to file systems only using this protocol and with the high degree of abstraction that comes with it,
+it can operate smoothly no matter the file system its running on or interacting with the devices thereof. Then comes the second part of the file system driver, the
+implementation-detailed special backend.
+
+This backend section of the file system driver exactly knows how to interact with the specific file system it is a driver of at the lowest level possible. It handles 
+its inodes, manages its FAT, jumps around B+ trees. It is specific to that file system. The BFSI's purpose is to talk to that backend driver in a way that the backend 
+driver understands. The kernel knows how to talk to the BFSI, and the BFSI knows how to talk to the file system. They complement each other.
+
+¿How do File Descriptors (FDs) work?
+The kernel expects and respects the driver to manage it's own File Descriptors internally within the driver. The BFSI returns a generic FD to the kernel to represent the file.
+The kernel takes that value but it doesn't directly expose it to itself nor any applications. The kernel internally generates a unique FD and then maps the kernel generated
+FD to the specific driver that gave it the FD and stores the original FD from the driver. That way, once the kernel wants or is ordered to make changes using a specific FD,
+it firsts resolves the kernel-level FD into the file system driver and its FD and calls the necessary BFSI functions using the FD.
+
+¡Example Visual Scheme of FDs!
+Application -> KernelOpenFile(path, mode) -> Resolve Path to Driver -> Biological File System Interface, FsOpenFile(path, mode) -> Backend Driver (generates unique Driver FD)
+Backend Driver (hands Driver FD to BFSI) -> BFSI (hands Driver FD to Kernel) -> Kernel (generates a unique Kernel FD that maps to that Driver and Driver FD)
+Application -> KernelWriteFile(KernelFD, ...) -> KernelResolveDriverFD(KernelFD), Driver and Driver FD resolved -> BFSI FsWriteFile(DriverFD) -> Backend Driver (writes data)
+
+¿How do we go from paths to implementation-detailed structures?
+Once an FS request is made to the kernel, it immediately resolves which file system the path belongs to and notifies the driver. It gives the driver the necessary subpart of
+the path and from there, the BFSI internally converts the path to its own specific formats, which may be inodes, clusters or trees. Path resolving can be pretty taxing, so
+the kernel internally caches the paths. The file system is expected to also cache the paths for faster and more efficient operation. However, caching is not standard-enforced
+and an implementation may (without being very wise) decide to leave it out. The kernel always caches its own resolves no matter what. The kernel caching does not matter to
+any file system because it is internal to the way it manages drives and drivers, so it will not be documented in this specific documentation.
+
+¿How is the abstraction done?
+The BFSI layer abstracts the file system functionality by defining a set definition of functions that range from getting a handle to a file to creating and removing directories,
+moving files around, handling mounting and unmounting. It also defines functions for getting generic file and directory information that most if not all file systems keep
+track of. Those fields live in standard-defined and enforced structures, such as BFSIFile and BFSIDirectory that contain those common fields. The BFSI also defines standard
+values and IDs for things such as metadata properties (read-only, hidden) that each driver must convert into its internal format and it defines standard error codes for
+operations.
+
+TODO: Implement BFSI definitions, values, structures, functions. Will be documented after the Myth File System is fully complete.

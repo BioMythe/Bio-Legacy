@@ -1,0 +1,7 @@
+#ifndef MYTH_UTILS_MISC_DEFS_H
+#define MYTH_UTILS_MISC_DEFS_H
+
+#define FS_STRINGIZE_DETAIL(x) #x
+#define FS_STRINGIZE(x)        FS_STRINGIZE_DETAIL(x)
+
+#endif // !MYTH_UTILS_MISC_DEFS_H
