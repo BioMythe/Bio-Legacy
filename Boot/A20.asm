@@ -2,6 +2,8 @@
 %define A20_CHECK_LOWER_VALUE 0xB1
 %define A20_CHECK_UPPER_VALUE 0xC4
 
+; Checks the state of the 21st bus address line.
+;   Return Value (AX) -> 0 if disabled, 1 if enabled.
 GetStateA20:
     call IsQEMU
     cmp ax, 1
@@ -15,7 +17,7 @@ GetStateA20:
         ret
 
 ; Checks the state of the 21st bus address line.
-; QEMU doesn't emulate memory wraparound with A20=0 for some reason,
+; QEMU doesn't emulate memory wraparound with A20=0 (from "info registers" dump) for some reason,
 ; this uses the fast A20 gate which QEMU supports to check A20.
 ;   Return Value (AX) -> 0 if disabled, 1 if enabled.
 GetStateA20_QEMU:
@@ -35,8 +37,8 @@ GetStateA20_QEMU:
 ;   Return Value (AX) -> 0 if disabled, 1 if enabled.
 GetStateA20_Wraparound:
     pushf
-    push es
     push ds
+    push es
     push di
     push si
     cli
@@ -47,8 +49,8 @@ GetStateA20_Wraparound:
     not ax
     mov ds, ax ; DS = 0xFFFF
 
-    mov si, A20_CHECK_ADDRESS        ; es:di = 0x0000:ADDRESS
-    mov di, A20_CHECK_ADDRESS + 0x10 ; ds:si = 0xFFFF:(ADDRESS+16)
+    mov di, A20_CHECK_ADDRESS        ; es:di = 0x0000:ADDRESS
+    mov si, A20_CHECK_ADDRESS + 0x10 ; ds:si = 0xFFFF:(ADDRESS+16), 1MiB above with Real Mode addressing
 
     ; Keep track original values to restore later.
     mov al, byte [es:di]
@@ -62,7 +64,7 @@ GetStateA20_Wraparound:
     ; Check what byte resides at the under MB location.
     ; If the A20 line is disabled, the lower MB value would be overwritten
     ; when the read to the upper MB line was issued.
-    cmp [es:di], byte A20_CHECK_UPPER_VALUE
+    cmp byte [es:di], byte A20_CHECK_UPPER_VALUE
     
     ; Restore original memory contents.
     pop ax
@@ -80,8 +82,8 @@ GetStateA20_Wraparound:
         sti
         pop si
         pop di
-        pop ds
         pop es
+        pop ds
         popf
         ret
 

@@ -39,7 +39,7 @@ run: os-image
 	@$(ECHO) Booting up QEMU instance using the OS image...
 	@$(QEMU) -bios SeaBIOS_NoA20.bin -monitor stdio -m $(OS_MEMORY_SIZE) -drive format=raw,file=$(OS_IMAGE),if=virtio
 
-boot: Boot/Bootloader.asm
+boot: Boot/Bootloader.asm Boot/*.asm
 	@$(MKDIR) -p $(BOOT_BUILD_PATH)
 	@$(ASM) -f bin $< -o $(BOOTLOADER_IMAGE)
 
