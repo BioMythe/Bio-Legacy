@@ -24,6 +24,12 @@ mov [BOOT_DRIVE], dl
 mov bp, 0xB000
 mov sp, bp
 
+; AMD recommends reporting the execution mode of the OS to the BIOS for it to
+; properly optimize the system for it. This is recommended so we'll do it.
+mov ax, 0xEC00 ; BIOS function
+mov bl, 2      ; Values: 1 -> Protected Mode, 2 -> Long Mode, 3 -> Both. BIO is a 64-bit OS so we choose 2.
+int 0x15       ; Interrupt to notify BIOS.
+
 ; Check if extended 13h functions are supported
 mov ah, 0x41
 mov dl, [BOOT_DRIVE]
@@ -208,6 +214,10 @@ call Print
 ; Ensure A20 is enabled, enable if necessary and halt if fail.
 call EnsureA20
 
+; Notify jump.
+mov si, MSG_NOTIFY_JUMPING_TO_PROTECT
+call Print
+
 ; Long live Protected Mode! Your purpose shall be to ascend your noteworthy successor Long Mode from his enclosure.
 cli ; Step 1 of Entering Protected Mode - Clear Interrupts
     ; Step 2 of Entering Protected Mode - Enable A20, we already ensured it with a call to EnsureA20.
@@ -225,7 +235,7 @@ jmp GDT32_CODE_SEGMENT:BL32
 %include "Boot/A20.asm"
 
 MSG_NOTIFY_LOADED_BOOTLODAER:  db "The Biological Bootloader (BIOBoot) has been successfully loaded into memory.", 0xA, 0x0
-MSG_NOTIFY_JUMPING_TO_PROTECT: db "Jumping to Protected Mode. If your system hangs for a long time, something has gone wrong within the system.", 0xA, 0x0
+MSG_NOTIFY_JUMPING_TO_PROTECT: db "Jumping to Protected Mode. If your system hangs for a long time, an error has occured, which may be along the lines of: CPU doesn't support necessary instructions (CPUID) or processor doesn't support Long Mode, as BIO is a 64-bit operating system.", 0xA, 0x0
 
 [bits 32]
 
