@@ -19,6 +19,3 @@ $(OBJ_PATH)/%.c.o: %.c
 	@$(MKDIR) -p $(dir $@)
 	@$(ECHO) Compiling $< to $@
 	@$(CC) $(CFLAGS) -c $< -o $@
-
-clean:
-	$(RM) -r $(BUILD_PATH)

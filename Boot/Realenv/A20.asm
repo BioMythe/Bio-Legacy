@@ -32,7 +32,6 @@ GetStateA20_QEMU:
         mov ax, 1
         ret
 
-
 ; Checks the state of the 21st bus address line using memory wraparound method.
 ;   Return Value (AX) -> 0 if disabled, 1 if enabled.
 GetStateA20_Wraparound:
@@ -267,4 +266,4 @@ MSG_NOTIFY_A20_METHOD_KEYBOARD_CONTROLLER: db "EnsureA20: Trying keyboard contro
 MSG_NOTIFY_A20_METHOD_FAST_GATE: db "EnsureA20: Trying Fast Gate method...", 0xA, 0x0
 MSG_NOTIFY_A20_METHOD_PORT_EE: db "EnsureA20: Trying Port 0xEE method...", 0xA, 0x0
 
-%include "Boot/Environment.asm"
+%include "Realenv/Environment.asm"

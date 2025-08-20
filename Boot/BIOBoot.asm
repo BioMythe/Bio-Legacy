@@ -1,21 +1,25 @@
-%define BOOTLOADER_VALIDATION_HEADER      "BIOLOAD!"
-%define BOOTLOADER_VALIDATION_HEADER_SIZE  0x8
-%define NUMBER_OF_BOOTLOADER_BYTES         8192 ; Let's give the entire bootloader 16 sectors. 8KB should be more than enough.
-%define SBOOT_ADDRESS                      0x7E00 ; Post 512 bytes after 512 byte worth of MBR
+%define BOOTLOADER_VALIDATION_HEADER      "BIOLOAD!" ; Magic identifier for post 512 byte mark.
+%define BOOTLOADER_VALIDATION_HEADER_SIZE  0x8       ; Size of the string above.
+%define NUMBER_OF_BOOTLOADER_BYTES         0x2000    ; 8KB of space allocated for the bootloader.
+                                                     ; The binary file is to be padded up to this amount of bytes.
+%define SBOOT_ADDRESS                      0x7E00    ; SBOOT (Secondary Boot) part of the bootloader.
+                                                     ; 0x7C00 + 512, the post 512 byte mark address.
 
 ;; SECTOR 1: BOOT SECTOR (MBR, LBA 0x0)
 [bits 16]
 [org 0x7C00]
 
-; BIOFS compatible disk.
-jmp short BLMain ; 2 bytes for short jump to bootloader code.
-; NOTE: Myth File System Tool will override the 3 fields below, these are prototype-esque.
-db "MYTH"        ; Indicate existence of the Myth File System on this disk. 
-dw  4096         ; Bytes per file system block. Can be changed during MakeFs phase.
-dq  2            ; Block address of the metadata block. Can be changed during MakeFs phase.
+; Myth File System Configuration Chunk
+jmp short Realenv ; 2 bytes for short jump to bootloader code.
+dd 0              ; Four byte magic string "MYTH"
+dw 0              ; Bytes per file system block.
+dq 0              ; Metadata block address in file system block addressing.
+; None of the Configuration Chunk values (except JMP SHORT) are given here, because
+; the Myth File System Tool will write those when it's invoked during the MakeFS phase.
+; Only the short jump is here because, well, MakeFS isn't able to do that and won't overwrite that field.
 
-; Code of BL begins here, the first ever instruction JMP SHORT jumps right here, skipping past FS early configuration.
-BLMain:
+; Code of BL begins here, the first ever instruction JMP SHORT jumps right here, skipping past the FS Configuration Chunk.
+Realenv: ; Real Environment
 
 ; Immediately save DL to BOOT_DRIVE.
 mov [BOOT_DRIVE], dl
@@ -72,12 +76,14 @@ mov dword [si+DiskAddressPacket.ReadLBA+4],  0x0 ; High DWORD
                                                  ; QWORD=Sector 0 (includes MBR)
 call ReadDisk
 
-mov cx, 8
+; Validate the Identification Magic for SBOOT.
+mov cx, BOOTLOADER_VALIDATION_HEADER_SIZE
 mov di, SBOOT_ADDRESS
 mov si, BOOTLOADER_VALIDATION_HEADER_TEXT
 repe cmpsb
 jnz FailValidateBootloaderHeader
 
+; Jump to SBOOT, skipping past the Identification Magic.
 jmp SBOOT_ADDRESS+BOOTLOADER_VALIDATION_HEADER_SIZE
 
 Halt:
@@ -229,17 +235,17 @@ or al, 0x1
 mov cr0, eax
 
 ; Step 5 - FAR JUMP TO 32-BIT CODE.
-jmp GDT32_CODE_SEGMENT:BL32
+jmp GDT32_CODE_SEGMENT:Protenv
 
-%include "Boot/GDT32.asm"
-%include "Boot/A20.asm"
+%include "Realenv/GDT32.asm"
+%include "Realenv/A20.asm"
 
 MSG_NOTIFY_LOADED_BOOTLODAER:  db "The Biological Bootloader (BIOBoot) has been successfully loaded into memory.", 0xA, 0x0
 MSG_NOTIFY_JUMPING_TO_PROTECT: db "Jumping to Protected Mode. If your system hangs for a long time, an error has occured, which may be along the lines of: CPU doesn't support necessary instructions (CPUID) or processor doesn't support Long Mode, as BIO is a 64-bit operating system.", 0xA, 0x0
 
 [bits 32]
 
-BL32:
+Protenv: ; Protected Environment
     ; Update all segment registers to our GDT's data segment.
     ; Otherwise, CPU thinks they are real mode registers and we'll probably triple fault at some point.
     mov ax, GDT32_DATA_SEGMENT
@@ -254,7 +260,7 @@ BL32:
     mov esp, ebp
 
     ; Make sure the CPU supports the CPUID instruction.
-    call CPUIDChk
+    call CheckCPUID
     cmp eax, 0
     je Halt32
 
@@ -289,46 +295,23 @@ BL32:
     mov cr0, eax
 
     lgdt [GDTR64]
-    jmp GDT64_CODE_SEGMENT:BL64
+    jmp GDT64_CODE_SEGMENT:Longenv
 
     jmp Halt32
-
-CPUIDChk:
-    pushfd
-    pop eax
-
-    mov ecx, eax
-    xor eax, 1 << 21
-
-    push eax
-    popfd
-    pushfd
-    pop eax
-
-    push ecx
-    popfd
-
-    xor eax, ecx
-    jnz .Supported
-    
-    mov eax, 0
-    ret
-
-    .Supported:
-        mov eax, 1
-        ret
 
 Halt32:
     cli
     hlt
     jmp Halt32
 
-%include "Boot/Paging.asm"
-%include "Boot/GDT64.asm"
+%include "Protenv/Paging.asm"
+%include "Protenv/CPUID.asm"
+%include "Protenv/GDT64.asm"
 
 [bits 64]
 
-BL64:
+Longenv: ; Long Environment
+    ; Update segment registers.
     mov ax, GDT64_DATA_SEGMENT
     mov ds, ax
     mov es, ax
@@ -336,7 +319,25 @@ BL64:
     mov gs, ax
     mov ss, ax
 
-    mov rax, 0xFFFFFFFFFFFFFFFF
-    jmp $
+    ; Setup stack.
+    mov rbp, 0x9000
+    mov rsp, rbp
+
+    call VGA_Clear
+    mov esi, STR_BOOTLOADER_LONG
+    call VGA_Print
+
+    ; TODO: Parse file system, load kernel.
+
+    jmp Halt64
+
+Halt64:
+    cli
+    hlt
+    jmp Halt64
+
+%include "Drivers/VGA.asm"
+
+STR_BOOTLOADER_LONG: db "BIOBoot has successfully entered Long Mode. Now operating in 64-bits, welcome home."
 
 times NUMBER_OF_BOOTLOADER_BYTES-($-$$) db 0 ; Pad image with zeroes.

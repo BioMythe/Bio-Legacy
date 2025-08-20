@@ -12,7 +12,8 @@ BOOTLOADER_BLOCKS  := $(shell echo $$(( ($(BOOTLOADER_SIZE) / $(FS_BLOCK_SIZE)) 
 OS_MEMORY_SIZE     ?= 512M # RAM size
 
 OS_IMAGE           ?= $(BUILD_PATH)/BIO.img
-BOOTLOADER_IMAGE   ?= $(BOOT_BUILD_PATH)/Bootloader.img
+BOOTLOADER_BINARY  ?= BIOBoot.bin
+BOOTLOADER_IMAGE   ?= $(BOOT_BUILD_PATH)/$(BOOTLOADER_BINARY)
 
 RM    ?= rm
 CP    ?= cp
@@ -39,9 +40,8 @@ run: os-image
 	@$(ECHO) Booting up QEMU instance using the OS image...
 	@$(QEMU) -bios SeaBIOS_NoA20.bin -monitor stdio -m $(OS_MEMORY_SIZE) -drive format=raw,file=$(OS_IMAGE),if=virtio
 
-boot: Boot/Bootloader.asm Boot/*.asm
-	@$(MKDIR) -p $(BOOT_BUILD_PATH)
-	@$(ASM) -f bin $< -o $(BOOTLOADER_IMAGE)
+boot:
+	@$(MAKE) -C $(BOOT_PATH) BUILD_PATH=$(abspath $(BOOT_BUILD_PATH)) TARGET_BIN=$(BOOTLOADER_BINARY)
 
 tools: myth
 
