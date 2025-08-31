@@ -1,2 +1,3 @@
 # BIO
-BIO Operating System
+The Biological Operating System
+

@@ -12,8 +12,10 @@ BOOTLOADER_BLOCKS  := $(shell echo $$(( ($(BOOTLOADER_SIZE) / $(FS_BLOCK_SIZE)) 
 OS_MEMORY_SIZE     ?= 512M # RAM size
 
 OS_IMAGE           ?= $(BUILD_PATH)/BIO.img
-BOOTLOADER_BINARY  ?= BIOBoot.bin
-BOOTLOADER_IMAGE   ?= $(BOOT_BUILD_PATH)/$(BOOTLOADER_BINARY)
+BOOTLOADER_NAME    ?= BIOBoot
+BOOTLOADER_UNIT    ?= $(BOOT_PATH)/$(BOOTLOADER_NAME).asm
+BOOTLOADER_BINARY  ?= $(BOOT_BUILD_PATH)/$(BOOTLOADER_NAME).bin
+BOOTLOADER_SOURCES := $(shell find $(BOOT_PATH) -name *.asm)
 
 RM    ?= rm
 CP    ?= cp
@@ -24,24 +26,28 @@ QEMU  ?= qemu-system-x86_64
 MYTH  ?= $(TOOLS_BUILD_PATH)/Myth
 MKDIR ?= mkdir
 
-os-image: tools boot
+os-image: $(OS_IMAGE)
+$(OS_IMAGE): tools boot
 	@$(MKDIR) -p $(BUILD_PATH)
 # CREATE OS IMAGE
 	@$(ECHO) Creating OS image...
 	@$(DD) if=/dev/zero of=$(OS_IMAGE) bs=1M count=$(OS_IMAGE_SIZE)
 # WRITE BOOTLOADER
 	@$(ECHO) Writing bootloader sectors onto OS image...
-	@$(DD) if=$(BOOTLOADER_IMAGE) of=$(OS_IMAGE) conv=notrunc bs=1 count=$(BOOTLOADER_SIZE)
+	@$(DD) if=$(BOOTLOADER_BINARY) of=$(OS_IMAGE) conv=notrunc bs=1 count=$(BOOTLOADER_SIZE)
 # WRITE FILESYSTEM
 	@$(ECHO) Making Myth Filesytem on OS image...
 	@$(MYTH) MakeFS $(OS_IMAGE) $(FS_BLOCK_SIZE) $(BOOTLOADER_BLOCKS) "BIO Operating System"
 
 run: os-image
 	@$(ECHO) Booting up QEMU instance using the OS image...
-	@$(QEMU) -bios SeaBIOS_NoA20.bin -monitor stdio -m $(OS_MEMORY_SIZE) -drive format=raw,file=$(OS_IMAGE),if=virtio
+	@$(QEMU) -monitor stdio -m $(OS_MEMORY_SIZE) -drive format=raw,file=$(OS_IMAGE),if=virtio
 
-boot:
-	@$(MAKE) -C $(BOOT_PATH) BUILD_PATH=$(abspath $(BOOT_BUILD_PATH)) TARGET_BIN=$(BOOTLOADER_BINARY)
+boot: $(BOOTLOADER_BINARY)
+$(BOOTLOADER_BINARY): $(BOOTLOADER_UNIT) $(BOOTLOADER_SOURCES)
+	@$(MKDIR) -p $(BOOT_BUILD_PATH)
+	@$(ECHO) Compiling BIOBoot: '$<' to '$@'
+	@$(ASM) $< -f bin -o $@ 
 
 tools: myth
 

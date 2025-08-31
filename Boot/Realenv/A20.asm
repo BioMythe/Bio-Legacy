@@ -266,4 +266,4 @@ MSG_NOTIFY_A20_METHOD_KEYBOARD_CONTROLLER: db "EnsureA20: Trying keyboard contro
 MSG_NOTIFY_A20_METHOD_FAST_GATE: db "EnsureA20: Trying Fast Gate method...", 0xA, 0x0
 MSG_NOTIFY_A20_METHOD_PORT_EE: db "EnsureA20: Trying Port 0xEE method...", 0xA, 0x0
 
-%include "Realenv/Environment.asm"
+%include "Boot/Realenv/Environment.asm"

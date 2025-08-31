@@ -1,5 +1,3 @@
-[bits 64] ; for code diagnoser
-
 VGA_FRAMEBUFFER_ADDRESS equ 0xB8000
 VGA_FRAMEBUFFER_WIDTH   equ 80
 VGA_FRAMEBUFFER_HEIGHT  equ 25
@@ -166,41 +164,43 @@ VGA_Scroll:
 
 ; Prints a null-terminated string.
 ;   Parameters:
-;     ESI -> Pointer to the string.
+;     RSI -> Pointer to the string.
 VGA_Print:
     pushfq
     push rax
     push rbx
-    push  cx
+    push rcx
     push rdx
     push rsi
 
     ; CX = Cursor Tracker
+    movzx rcx, cx ; Extend CX into QWORD.
     call VGA_GetCursorOffset
 
     ; RBX = Framebuffer Address
     mov rbx, VGA_FRAMEBUFFER_ADDRESS
 
     ; RBX += RCX * BYTES_PER_CELL
-    push rcx ; Store original RCX (to preserve upper original bytes)
-        movzx rcx, cx ; Extend CX to 64-bit space (zero out upper bits).
-        xor rdx, rdx
-        mov rax, VGA_BYTES_PER_CELL
-        mul rcx
-        add rbx, rax
-    pop rcx ; Restore original Cursor Tracker
+    xor rdx, rdx
+    mov rax, VGA_BYTES_PER_CELL
+    mul rcx
+    add rbx, rax
 
     .Loop:
-        mov al, [esi]  ; Load current char into AL.
+        mov al, [rsi]  ; Load current char into AL.
         cmp al, byte 0 ; Null terminator hit?
         je .Done       ; If so, goto Exit label.
-        inc esi        ; Increase string pointer to next char.
+        inc rsi        ; Increase string pointer to next char.
+
+        ; Check for LF.
+        cmp al, 0x0A
+        je .FeedLine
 
         mov [rbx], al  ; Move into video memory.
-        inc ebx        ; Increase video memory pointer.
+        inc rbx        ; Increase video memory pointer.
 
-        mov byte [ebx], 0x0F ; White on black.
-        inc ebx              ; Next cell.
+        mov byte [rbx], 0x0F ; White on black.
+        inc rbx              ; Next cell.
 
         inc cx ; Cursor Tracker
         cmp cx, VGA_FRAMEBUFFER_CELLS ; Last cell was written just to?
@@ -216,6 +216,41 @@ VGA_Print:
         sub rbx, VGA_FRAMEBUFFER_WIDTH * VGA_BYTES_PER_CELL ; Adjust Framebuffer Pointer
         
         jmp .Loop ; Char loop
+    .FeedLine:
+        ; Flush current tracker value first to have all functions below work correctly because they rely on port value and not our CX.
+        xchg bx, cx
+            call VGA_SetCursorOffset
+        xchg bx, cx
+
+        ; DX = Cursor X, AX = Cursor Y.
+        call VGA_GetCursorPosition
+        inc ax ; Advance to the next row.
+                  ; IMPORTANT: I HONESTLY DONT KNOW WHY THE HELL WE NEED TO ADD 2 INSTEAD OF 1. IT JUST WORKS IDK. WILL FUCK US LATER.
+
+        cmp ax, VGA_FRAMEBUFFER_HEIGHT ; Is this after the last row (out of bounds)?
+                                         ; IMPORTANT: ONCE AGAIN, I DONT KNOW WHY THE FUCK I NEED TO MUL BY 2. IT JUST WORKS.
+        jne .Proceed ; If not, proceed.
+
+        call VGA_Scroll ; We need to scroll up since no more lines/rows are left.
+        mov ax, VGA_FRAMEBUFFER_HEIGHT - 1 ; Last row.
+
+    .Proceed:
+        xor bx, bx ; X = 0
+        call VGA_SetCursorPosition ; Set cursor position to the updated coordinates in (BX, AX).
+        
+        ; Reload Cursor Tracker.
+        call VGA_GetCursorOffset ; CX = Cursor Tracker
+        movzx rcx, cx ; Extend CX to QWORD space (zero out upper bits)
+
+        ; Adjust the video memory pointer in RBX.
+        ; We need: RBX = FB + (CX * 2)
+        mov rbx, VGA_FRAMEBUFFER_ADDRESS ; RBX = FB. We need RBX += CX*2
+        push rcx ; store original rcx
+            shl rcx, 1 ; CX *= 2
+            add rbx, rcx ; RBX += CX*2
+        pop rcx ; restore rcx
+
+        jmp .Loop ; Go to char loop again.
     .Done:
         xchg bx, cx
             call VGA_SetCursorOffset ; VGA_SetCursorOffset needs in BX.
@@ -223,7 +258,7 @@ VGA_Print:
 
         pop rsi
         pop rdx
-        pop  cx
+        pop rcx
         pop rbx
         pop rax
         popfq
